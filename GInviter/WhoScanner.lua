@@ -33,7 +33,7 @@ end
 function WS:SendQuery(whoString)
     whoString = whoString or ""
     if SetWhoToExtra then
-        SetWhoToExtra(1)
+        pcall(SetWhoToExtra, 1)
     end
     SendWho(whoString)
 end
@@ -57,7 +57,7 @@ function WS:ExecuteSliceQuery()
         bracket = levelBrackets[1]
     end
 
-    local query = "n-\"\" " .. bracket[1] .. "-" .. bracket[2]
+    local query = bracket[1] .. "-" .. bracket[2]
     self:SendQuery(query)
 end
 
@@ -123,9 +123,7 @@ function WS:OnWhoListUpdate()
         end
 
         local delay = GInviter.Database:GetSettings().whoScanDelay or 5
-        C_Timer = C_Timer or {}
-        -- If timer module is available or using OnUpdate frame
-        if C_Timer.After then
+        if type(C_Timer) == "table" and type(C_Timer.After) == "function" then
             C_Timer.After(delay, function()
                 if WS.isScanning then
                     WS:ExecuteSliceQuery()

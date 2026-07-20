@@ -21,9 +21,10 @@ local CLASS_COLORS = {
     ["DRUID"]       = "|cffFF7D0A",
 }
 
-local function GetClassColorStr(classFileName)
-    if not classFileName then return "|cffffffff" end
-    local clean = string.upper(string.gsub(classFileName, "%s+", ""))
+local function GetClassColorStr(classFileName, className)
+    local ref = (classFileName and classFileName ~= "") and classFileName or className
+    if not ref then return "|cffffffff" end
+    local clean = string.upper(string.gsub(ref, "%s+", ""))
     return CLASS_COLORS[clean] or "|cffffffff"
 end
 
@@ -260,7 +261,7 @@ function GUI:OnWhoScanCompleted(results, summary)
         row:SetBackdropColor(i % 2 == 0 and 0.06 or 0.09, i % 2 == 0 and 0.07 or 0.1, i % 2 == 0 and 0.09 or 0.13, 0.9)
         row:SetBackdropBorderColor(0.12, 0.14, 0.18, 0.5)
 
-        local colorStr = GetClassColorStr(p.classFileName)
+        local colorStr = GetClassColorStr(p.classFileName, p.class)
         row.nameText:SetText(colorStr .. p.name .. "|r")
         row.classText:SetText("Lv" .. p.level .. " " .. p.class)
 
