@@ -1,4 +1,4 @@
--- GInviter GUI.lua
+-- GInviter GUI.lua - Geist Obsidian Dark Dual-Pane Redesign
 local addonName, addon = ...
 GInviter = GInviter or {}
 GInviter.GUI = {}
@@ -8,7 +8,27 @@ GUI.activeTab = 1
 GUI.scannedPlayers = {}
 GUI.queueList = {}
 
-local backdropStyle = {
+-- Standard WoW 3.3.5 Class Colors (RGB Hex)
+local CLASS_COLORS = {
+    ["WARRIOR"]     = "|cffC79C6E",
+    ["PALADIN"]     = "|cffF58CBA",
+    ["HUNTER"]      = "|cffABD473",
+    ["ROGUE"]       = "|cffFFF569",
+    ["PRIEST"]     = "|cffFFFFFF",
+    ["DEATHKNIGHT"] = "|cffC41F3B",
+    ["SHAMAN"]      = "|cff0070DE",
+    ["MAGE"]        = "|cff69CCF0",
+    ["WARLOCK"]     = "|cff9482C9",
+    ["DRUID"]       = "|cffFF7D0A",
+}
+
+local function GetClassColorStr(classFileName)
+    if not classFileName then return "|cffffffff" end
+    local clean = string.upper(string.gsub(classFileName, "%s+", ""))
+    return CLASS_COLORS[clean] or "|cffffffff"
+end
+
+local backdropObsidian = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
     tile = false, tileSize = 0, edgeSize = 1,
@@ -18,22 +38,22 @@ local backdropStyle = {
 function GUI:Initialize()
     if self.mainFrame then return end
 
-    -- Main Window Container
+    -- Main Window Container (Dual-Pane layout: 700x500)
     local f = CreateFrame("Frame", "GInviterMainFrame", UIParent)
-    f:SetSize(620, 440)
+    f:SetSize(700, 500)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     f:SetFrameStrata("HIGH")
     f:SetClampedToScreen(true)
-    f:SetBackdrop(backdropStyle)
-    f:SetBackdropColor(0.08, 0.09, 0.12, 0.95)
-    f:SetBackdropBorderColor(0.2, 0.22, 0.28, 1.0)
+    f:SetBackdrop(backdropObsidian)
+    f:SetBackdropColor(0.05, 0.05, 0.07, 0.98) -- #0c0d12 Obsidian
+    f:SetBackdropBorderColor(0.15, 0.16, 0.22, 1.0) -- Hairline #252a38
     f:Hide()
 
     self.mainFrame = f
 
-    -- Dedicated Title Bar (Drag Handle)
+    -- Header & Title Bar (Dedicated Drag Handle)
     local titleBar = CreateFrame("Frame", nil, f)
-    titleBar:SetSize(620, 32)
+    titleBar:SetSize(700, 36)
     titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     titleBar:EnableMouse(true)
     titleBar:RegisterForDrag("LeftButton")
@@ -42,222 +62,334 @@ function GUI:Initialize()
     f:SetMovable(true)
 
     local titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", titleBar, "LEFT", 12, 0)
-    titleText:SetText("|cff3399ffGInviter|r  |cff888888Recruiter Dashboard|r")
+    titleText:SetPoint("LEFT", titleBar, "LEFT", 16, 0)
+    titleText:SetText("|cff00a2ffGInviter|r  |cff8f8f8fGuild Recruitment Engine|r")
 
     -- Close Button
     local closeBtn = CreateFrame("Button", nil, titleBar, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -4, -4)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    closeBtn:SetScript("OnClick", function()
+        f:Hide()
+        GUI:UpdateFloatingHUDState()
+    end)
 
-    -- Create Navigation Tabs
-    self:CreateTabButtons()
+    -- Left Sidebar (Quick Filters & Stats)
+    self:CreateSidebar(f)
 
-    -- Create Tab Content Panels
-    self:CreateDashboardPanel()
-    self:CreateQueuePanel()
-    self:CreateFiltersPanel()
-    self:CreateStatsPanel()
+    -- Right Main Viewport (Tabbed Navigation)
+    self:CreateMainViewport(f)
 
-    -- Create Fallback Mode Secure Action Button
+    -- Fallback HUD (Integrated Footer + Floating Pill)
     self:CreateFallbackHUD()
 
     -- Select Default Tab
     self:SelectTab(1)
 end
 
-function GUI:CreateTabButtons()
-    local f = self.mainFrame
-    local tabNames = { "Dashboard", "Smart Queue", "Smart Filters", "Stats & History" }
+-- Left Sidebar Component
+function GUI:CreateSidebar(parent)
+    local sb = CreateFrame("Frame", nil, parent)
+    sb:SetSize(190, 452)
+    sb:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -40)
+    sb:SetBackdrop(backdropObsidian)
+    sb:SetBackdropColor(0.08, 0.09, 0.12, 0.9) -- #161922 Card container
+    sb:SetBackdropBorderColor(0.15, 0.16, 0.22, 1.0)
+
+    -- Section 1: Quick Stats Cards
+    local statHeader = sb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    statHeader:SetPoint("TOPLEFT", sb, "TOPLEFT", 12, -10)
+    statHeader:SetText("|cff00a2ffLIVE SCAN STATS|r")
+
+    local statBox = CreateFrame("Frame", nil, sb)
+    statBox:SetSize(166, 70)
+    statBox:SetPoint("TOPLEFT", statHeader, "BOTTOMLEFT", 0, -6)
+    statBox:SetBackdrop(backdropObsidian)
+    statBox:SetBackdropColor(0.05, 0.05, 0.07, 0.8)
+    statBox:SetBackdropBorderColor(0.15, 0.16, 0.22, 1.0)
+
+    local sideStatText = statBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sideStatText:SetPoint("TOPLEFT", statBox, "TOPLEFT", 8, -8)
+    sideStatText:SetText("Scanned: |cffffffff0|r\nUnguilded: |cff00e6760|r\nEligible: |cff00a2ff0|r\nInvited: |cffffcc000|r")
+    self.sideStatText = sideStatText
+
+    -- Section 2: Quick Filter Controls
+    local filterHeader = sb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    filterHeader:SetPoint("TOPLEFT", statBox, "BOTTOMLEFT", 0, -14)
+    filterHeader:SetText("|cff00a2ffSMART FILTERS|r")
+
+    local filters = GInviter.Database:GetSettings().filters or GInviter.Config.Defaults.filters
+
+    local cbNoGuild = CreateFrame("CheckButton", "GInviterSBNoGuild", sb, "UICheckButtonTemplate")
+    cbNoGuild:SetPoint("TOPLEFT", filterHeader, "BOTTOMLEFT", -4, -4)
+    _G[cbNoGuild:GetName() .. "Text"]:SetText("No Guild Only")
+    _G[cbNoGuild:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
+    cbNoGuild:SetChecked(filters.noGuildOnly)
+    cbNoGuild:SetScript("OnClick", function(s) filters.noGuildOnly = s:GetChecked() end)
+
+    local cbFriends = CreateFrame("CheckButton", "GInviterSBFriends", sb, "UICheckButtonTemplate")
+    cbFriends:SetPoint("TOPLEFT", cbNoGuild, "BOTTOMLEFT", 0, 2)
+    _G[cbFriends:GetName() .. "Text"]:SetText("Exclude Friends")
+    _G[cbFriends:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
+    cbFriends:SetChecked(filters.excludeFriends)
+    cbFriends:SetScript("OnClick", function(s) filters.excludeFriends = s:GetChecked() end)
+
+    local cbIgnores = CreateFrame("CheckButton", "GInviterSBIgnores", sb, "UICheckButtonTemplate")
+    cbIgnores:SetPoint("TOPLEFT", cbFriends, "BOTTOMLEFT", 0, 2)
+    _G[cbIgnores:GetName() .. "Text"]:SetText("Exclude Ignores")
+    _G[cbIgnores:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
+    cbIgnores:SetChecked(filters.excludeIgnores)
+    cbIgnores:SetScript("OnClick", function(s) filters.excludeIgnores = s:GetChecked() end)
+
+    local cbRecentInv = CreateFrame("CheckButton", "GInviterSBRecentInv", sb, "UICheckButtonTemplate")
+    cbRecentInv:SetPoint("TOPLEFT", cbIgnores, "BOTTOMLEFT", 0, 2)
+    _G[cbRecentInv:GetName() .. "Text"]:SetText("Exclude Recent")
+    _G[cbRecentInv:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
+    cbRecentInv:SetChecked(filters.excludeRecentInvites)
+    cbRecentInv:SetScript("OnClick", function(s) filters.excludeRecentInvites = s:GetChecked() end)
+
+    local cbBlacklist = CreateFrame("CheckButton", "GInviterSBBlacklist", sb, "UICheckButtonTemplate")
+    cbBlacklist:SetPoint("TOPLEFT", cbRecentInv, "BOTTOMLEFT", 0, 2)
+    _G[cbBlacklist:GetName() .. "Text"]:SetText("Exclude Blacklist")
+    _G[cbBlacklist:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
+    cbBlacklist:SetChecked(filters.excludeBlacklisted)
+    cbBlacklist:SetScript("OnClick", function(s) filters.excludeBlacklisted = s:GetChecked() end)
+
+    -- Section 3: Duplicate Window Selector
+    local dupHeader = sb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dupHeader:SetPoint("TOPLEFT", cbBlacklist, "BOTTOMLEFT", 4, -12)
+    dupHeader:SetText("|cff00a2ffDUPLICATE WINDOW|r")
+
+    local dupBtn = CreateFrame("Button", nil, sb)
+    dupBtn:SetSize(166, 24)
+    dupBtn:SetPoint("TOPLEFT", dupHeader, "BOTTOMLEFT", 0, -6)
+    dupBtn:SetBackdrop(backdropObsidian)
+    dupBtn:SetBackdropColor(0.12, 0.14, 0.18, 1.0)
+    dupBtn:SetBackdropBorderColor(0.2, 0.22, 0.28, 1.0)
+
+    local dupText = dupBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dupText:SetPoint("CENTER", dupBtn, "CENTER", 0, 0)
+    dupText:SetText("Window: |cffffcc00" .. (GInviter.Database:GetSettings().dupWindow or "today") .. "|r")
+
+    dupBtn:SetScript("OnClick", function()
+        local cur = GInviter.Database:GetSettings().dupWindow
+        local nextVal = "10m"
+        if cur == "10m" then nextVal = "1h"
+        elseif cur == "1h" then nextVal = "today"
+        elseif cur == "today" then nextVal = "custom"
+        else nextVal = "10m" end
+        GInviter.Database:GetSettings().dupWindow = nextVal
+        dupText:SetText("Window: |cffffcc00" .. nextVal .. "|r")
+    end)
+end
+
+-- Right Main Viewport Component
+function GUI:CreateMainViewport(parent)
+    local vp = CreateFrame("Frame", nil, parent)
+    vp:SetSize(488, 452)
+    vp:SetPoint("TOPLEFT", parent, "TOPLEFT", 204, -40)
+    self.mainViewport = vp
+
+    -- Tab Bar
+    local tabNames = { "Candidate Pool", "Active Queue", "Stats & History" }
     self.tabButtons = {}
 
     for i, name in ipairs(tabNames) do
-        local btn = CreateFrame("Button", nil, f)
-        btn:SetSize(125, 26)
-        btn:SetPoint("TOPLEFT", f, "TOPLEFT", 12 + (i - 1) * 130, -32)
-        btn:SetBackdrop(backdropStyle)
-        btn:SetBackdropColor(0.12, 0.14, 0.18, 1.0)
-        btn:SetBackdropBorderColor(0.25, 0.28, 0.35, 1.0)
+        local btn = CreateFrame("Button", nil, vp)
+        btn:SetSize(155, 28)
+        btn:SetPoint("TOPLEFT", vp, "TOPLEFT", (i - 1) * 160, 0)
+        btn:SetBackdrop(backdropObsidian)
+        btn:SetBackdropColor(0.08, 0.09, 0.12, 0.9)
+        btn:SetBackdropBorderColor(0.15, 0.16, 0.22, 1.0)
 
         local font = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         font:SetPoint("CENTER", btn, "CENTER", 0, 0)
         font:SetText(name)
         btn.font = font
 
-        btn:SetScript("OnClick", function()
-            GUI:SelectTab(i)
-        end)
-
+        btn:SetScript("OnClick", function() GUI:SelectTab(i) end)
         self.tabButtons[i] = btn
     end
+
+    -- Tab Panels
+    self:CreateCandidatePanel(vp)
+    self:CreateQueuePanel(vp)
+    self:CreateStatsPanel(vp)
 end
 
 function GUI:SelectTab(tabIndex)
     self.activeTab = tabIndex
     for i, btn in ipairs(self.tabButtons) do
         if i == tabIndex then
-            btn:SetBackdropColor(0.2, 0.4, 0.8, 1.0)
-            btn:SetBackdropBorderColor(0.4, 0.6, 1.0, 1.0)
+            btn:SetBackdropColor(0.0, 0.5, 0.9, 1.0) -- Electric Azure Accent
+            btn:SetBackdropBorderColor(0.2, 0.7, 1.0, 1.0)
             btn.font:SetTextColor(1, 1, 1, 1)
         else
-            btn:SetBackdropColor(0.12, 0.14, 0.18, 1.0)
-            btn:SetBackdropBorderColor(0.25, 0.28, 0.35, 1.0)
-            btn.font:SetTextColor(0.7, 0.7, 0.7, 1)
+            btn:SetBackdropColor(0.08, 0.09, 0.12, 0.9)
+            btn:SetBackdropBorderColor(0.15, 0.16, 0.22, 1.0)
+            btn.font:SetTextColor(0.6, 0.6, 0.6, 1)
         end
     end
 
-    if self.dashboardPanel then self.dashboardPanel:Hide() end
+    if self.candidatePanel then self.candidatePanel:Hide() end
     if self.queuePanel then self.queuePanel:Hide() end
-    if self.filtersPanel then self.filtersPanel:Hide() end
     if self.statsPanel then self.statsPanel:Hide() end
 
-    if tabIndex == 1 and self.dashboardPanel then self.dashboardPanel:Show() end
+    if tabIndex == 1 and self.candidatePanel then self.candidatePanel:Show() end
     if tabIndex == 2 and self.queuePanel then self.queuePanel:Show() end
-    if tabIndex == 3 and self.filtersPanel then self.filtersPanel:Show() end
-    if tabIndex == 4 and self.statsPanel then
+    if tabIndex == 3 and self.statsPanel then
         self.statsPanel:Show()
         self:RefreshStatsDisplay()
     end
 end
 
--- Tab 1: Dashboard Panel
-function GUI:CreateDashboardPanel()
-    local p = CreateFrame("Frame", nil, self.mainFrame)
-    p:SetSize(596, 365)
-    p:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 12, -63)
-    self.dashboardPanel = p
+-- Tab 1: Candidate Pool Panel
+function GUI:CreateCandidatePanel(parent)
+    local p = CreateFrame("Frame", nil, parent)
+    p:SetSize(488, 416)
+    p:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -36)
+    self.candidatePanel = p
 
-    -- Summary Cards Panel
-    local summaryBox = CreateFrame("Frame", nil, p)
-    summaryBox:SetSize(596, 40)
-    summaryBox:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
-    summaryBox:SetBackdrop(backdropStyle)
-    summaryBox:SetBackdropColor(0.12, 0.14, 0.18, 0.8)
-    summaryBox:SetBackdropBorderColor(0.2, 0.22, 0.28, 1.0)
+    -- Action Header
+    local scanBtn = CreateFrame("Button", nil, p)
+    scanBtn:SetSize(140, 26)
+    scanBtn:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+    scanBtn:SetBackdrop(backdropObsidian)
+    scanBtn:SetBackdropColor(0.1, 0.4, 0.8, 1.0)
+    scanBtn:SetBackdropBorderColor(0.2, 0.5, 0.9, 1.0)
 
-    local summaryText = summaryBox:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    summaryText:SetPoint("LEFT", summaryBox, "LEFT", 12, 0)
-    summaryText:SetText("Results: |cffffffff0|r   Unguilded: |cff33ff330|r   Already Invited: |cffffcc000|r   Ignored: |cff8888880|r   Eligible: |cff00ccff0|r")
-    self.summaryText = summaryText
+    local sFont = scanBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sFont:SetPoint("CENTER", scanBtn, "CENTER", 0, 0)
+    sFont:SetText("Run /who Scan")
+    scanBtn:SetScript("OnClick", function() GInviter.WhoScanner:StartAutoScan() end)
 
-    -- Recruit Everyone Button
     local recruitAllBtn = CreateFrame("Button", nil, p)
-    recruitAllBtn:SetSize(160, 28)
-    recruitAllBtn:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, -45)
-    recruitAllBtn:SetBackdrop(backdropStyle)
-    recruitAllBtn:SetBackdropColor(0.1, 0.6, 0.3, 1.0)
-    recruitAllBtn:SetBackdropBorderColor(0.2, 0.8, 0.4, 1.0)
+    recruitAllBtn:SetSize(160, 26)
+    recruitAllBtn:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, 0)
+    recruitAllBtn:SetBackdrop(backdropObsidian)
+    recruitAllBtn:SetBackdropColor(0.0, 0.6, 0.3, 1.0)
+    recruitAllBtn:SetBackdropBorderColor(0.1, 0.8, 0.4, 1.0)
 
     local rFont = recruitAllBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     rFont:SetPoint("CENTER", recruitAllBtn, "CENTER", 0, 0)
     rFont:SetText("[ Recruit Everyone ]")
-
     recruitAllBtn:SetScript("OnClick", function()
         local count = GInviter.QueueManager:QueueBatch(GUI.scannedPlayers)
-        DEFAULT_CHAT_FRAME:AddMessage("|cff3399ff[GInviter]|r Queued " .. count .. " eligible players.")
+        DEFAULT_CHAT_FRAME:AddMessage("|cff00a2ff[GInviter]|r Queued " .. count .. " eligible players.")
         GInviter.QueueManager:StartQueue()
-        GUI:SelectTab(2) -- Switch to Queue tab
+        GUI:SelectTab(2)
     end)
 
-    -- Refresh Scan Button
-    local refreshBtn = CreateFrame("Button", nil, p)
-    refreshBtn:SetSize(130, 28)
-    refreshBtn:SetPoint("TOPRIGHT", recruitAllBtn, "TOPLEFT", -10, 0)
-    refreshBtn:SetBackdrop(backdropStyle)
-    refreshBtn:SetBackdropColor(0.2, 0.4, 0.8, 1.0)
-    refreshBtn:SetBackdropBorderColor(0.3, 0.5, 0.9, 1.0)
+    -- Data Table Header
+    local tableHeader = CreateFrame("Frame", nil, p)
+    tableHeader:SetSize(488, 22)
+    tableHeader:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -34)
+    tableHeader:SetBackdrop(backdropObsidian)
+    tableHeader:SetBackdropColor(0.1, 0.12, 0.16, 1.0)
+    tableHeader:SetBackdropBorderColor(0.18, 0.2, 0.26, 1.0)
 
-    local refFont = refreshBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    refFont:SetPoint("CENTER", refreshBtn, "CENTER", 0, 0)
-    refFont:SetText("Run /who Scan")
+    local th1 = tableHeader:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    th1:SetPoint("LEFT", tableHeader, "LEFT", 8, 0)
+    th1:SetText("|cff8f8f8fPLAYER|r")
 
-    refreshBtn:SetScript("OnClick", function()
-        GInviter.WhoScanner:StartAutoScan()
-    end)
+    local th2 = tableHeader:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    th2:SetPoint("LEFT", tableHeader, "LEFT", 140, 0)
+    th2:SetText("|cff8f8f8fCLASS / LV|r")
 
-    -- Scanned Player List ScrollFrame
-    local scrollFrame = CreateFrame("ScrollFrame", "GInviterDashboardScroll", p, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetSize(565, 280)
-    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -80)
+    local th3 = tableHeader:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    th3:SetPoint("LEFT", tableHeader, "LEFT", 250, 0)
+    th3:SetText("|cff8f8f8fSTATUS|r")
+
+    local th4 = tableHeader:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    th4:SetPoint("RIGHT", tableHeader, "RIGHT", -20, 0)
+    th4:SetText("|cff8f8f8fACTION|r")
+
+    -- Scroll Area
+    local scrollFrame = CreateFrame("ScrollFrame", "GInviterCandidateScroll", p, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetSize(465, 350)
+    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -60)
 
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(565, 280)
+    content:SetSize(465, 350)
     scrollFrame:SetScrollChild(content)
-    self.dashboardContent = content
-    self.dashboardRows = {}
+    self.candidateContent = content
+    self.candidateRows = {}
 end
 
 function GUI:OnWhoScanCompleted(results, summary)
     self.scannedPlayers = results or {}
-    if self.summaryText then
-        self.summaryText:SetText("Results: |cffffffff" .. (summary.total or 0) .. 
-            "|r   Unguilded: |cff33ff33" .. (summary.unguilded or 0) .. 
-            "|r   Invited: |cffffcc00" .. (summary.alreadyInvited or 0) .. 
-            "|r   Ignored: |cff888888" .. (summary.ignored or 0) .. 
-            "|r   Eligible: |cff00ccff" .. (summary.eligible or 0) .. "|r")
+    if self.sideStatText then
+        self.sideStatText:SetText("Scanned: |cffffffff" .. (summary.total or 0) ..
+            "|r\nUnguilded: |cff00e676" .. (summary.unguilded or 0) ..
+            "|r\nEligible: |cff00a2ff" .. (summary.eligible or 0) ..
+            "|r\nInvited: |cffffcc00" .. (summary.alreadyInvited or 0) .. "|r")
     end
 
-    -- Render Rows
-    for _, row in ipairs(self.dashboardRows) do row:Hide() end
+    for _, row in ipairs(self.candidateRows) do row:Hide() end
 
     local rowHeight = 26
-    self.dashboardContent:SetHeight(math.max(#results * rowHeight, 280))
+    self.candidateContent:SetHeight(math.max(#results * rowHeight, 350))
 
     for i, p in ipairs(results) do
-        local row = self.dashboardRows[i]
+        local row = self.candidateRows[i]
         if not row then
-            row = CreateFrame("Frame", nil, self.dashboardContent)
-            row:SetSize(565, 24)
-            row:SetBackdrop(backdropStyle)
-            
+            row = CreateFrame("Frame", nil, self.candidateContent)
+            row:SetSize(465, 24)
+            row:SetBackdrop(backdropObsidian)
+
             local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             nameText:SetPoint("LEFT", row, "LEFT", 8, 0)
             row.nameText = nameText
 
-            local infoText = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            infoText:SetPoint("LEFT", row, "LEFT", 160, 0)
-            row.infoText = infoText
+            local classText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            classText:SetPoint("LEFT", row, "LEFT", 140, 0)
+            row.classText = classText
 
-            local actionBtn = CreateFrame("Button", nil, row)
-            actionBtn:SetSize(80, 20)
-            actionBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-            actionBtn:SetBackdrop(backdropStyle)
-            
-            local actFont = actionBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            actFont:SetPoint("CENTER", actionBtn, "CENTER", 0, 0)
-            actionBtn.actFont = actFont
-            row.actionBtn = actionBtn
+            local statusText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            statusText:SetPoint("LEFT", row, "LEFT", 250, 0)
+            row.statusText = statusText
 
-            self.dashboardRows[i] = row
+            local actBtn = CreateFrame("Button", nil, row)
+            actBtn:SetSize(75, 20)
+            actBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            actBtn:SetBackdrop(backdropObsidian)
+
+            local actFont = actBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            actFont:SetPoint("CENTER", actBtn, "CENTER", 0, 0)
+            actBtn.actFont = actFont
+            row.actBtn = actBtn
+
+            self.candidateRows[i] = row
         end
 
-        row:SetPoint("TOPLEFT", self.dashboardContent, "TOPLEFT", 0, -(i - 1) * 26)
-        row:SetBackdropColor(i % 2 == 0 and 0.1 or 0.14, i % 2 == 0 and 0.11 or 0.16, i % 2 == 0 and 0.15 or 0.2, 0.8)
-        row:SetBackdropBorderColor(0.2, 0.22, 0.28, 0.5)
+        row:SetPoint("TOPLEFT", self.candidateContent, "TOPLEFT", 0, -(i - 1) * 26)
+        row:SetBackdropColor(i % 2 == 0 and 0.06 or 0.09, i % 2 == 0 and 0.07 or 0.1, i % 2 == 0 and 0.09 or 0.13, 0.9)
+        row:SetBackdropBorderColor(0.12, 0.14, 0.18, 0.5)
 
-        row.nameText:SetText(p.name or "Unknown")
-        row.infoText:SetText("Lv" .. (p.level or 0) .. " " .. (p.class or "") .. (p.guild and p.guild ~= "" and (" <" .. p.guild .. ">") or ""))
+        local colorStr = GetClassColorStr(p.classFileName)
+        row.nameText:SetText(colorStr .. p.name .. "|r")
+        row.classText:SetText("Lv" .. p.level .. " " .. p.class)
 
         if p.isEligible then
-            row.actionBtn:SetBackdropColor(0.1, 0.5, 0.2, 1.0)
-            row.actionBtn:SetBackdropBorderColor(0.2, 0.7, 0.3, 1.0)
-            row.actionBtn.actFont:SetText("[ Invite ]")
-            row.actionBtn:SetScript("OnClick", function()
+            row.statusText:SetText("|cff00e676[ Eligible ]|r")
+            row.actBtn:SetBackdropColor(0.0, 0.5, 0.25, 1.0)
+            row.actBtn:SetBackdropBorderColor(0.1, 0.7, 0.35, 1.0)
+            row.actBtn.actFont:SetText("[ + Queue ]")
+            row.actBtn:SetScript("OnClick", function()
                 GInviter.QueueManager:AddToQueue(p)
                 GInviter.QueueManager:StartQueue()
             end)
         else
-            row.actionBtn:SetBackdropColor(0.2, 0.2, 0.2, 0.8)
-            row.actionBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
-            row.actionBtn.actFont:SetText(p.reason or "Ineligible")
-            row.actionBtn:SetScript("OnClick", nil)
+            row.statusText:SetText("|cffff3355[" .. (p.reason or "Ineligible") .. "]|r")
+            row.actBtn:SetBackdropColor(0.15, 0.15, 0.18, 0.8)
+            row.actBtn:SetBackdropBorderColor(0.2, 0.2, 0.25, 0.8)
+            row.actBtn.actFont:SetText("Skip")
+            row.actBtn:SetScript("OnClick", nil)
         end
 
-        -- Tooltip explaining ineligibility
         row:SetScript("OnEnter", function(s)
             GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
             GameTooltip:AddLine(p.name .. " (Lv" .. p.level .. " " .. p.class .. ")", 1, 1, 1)
-            GameTooltip:AddLine("Status: " .. (p.isEligible and "|cff33ff33Eligible|r" or ("|cffff3333" .. p.reason .. "|r")), 1, 1, 1)
+            GameTooltip:AddLine("Status: " .. (p.isEligible and "|cff00e676Eligible|r" or ("|cffff3355" .. p.reason .. "|r")), 1, 1, 1)
             if p.guild and p.guild ~= "" then GameTooltip:AddLine("Guild: " .. p.guild, 0.7, 0.7, 0.7) end
             if p.zone and p.zone ~= "" then GameTooltip:AddLine("Zone: " .. p.zone, 0.7, 0.7, 0.7) end
             GameTooltip:Show()
@@ -268,31 +400,31 @@ function GUI:OnWhoScanCompleted(results, summary)
     end
 end
 
--- Tab 2: Smart Queue Panel
-function GUI:CreateQueuePanel()
-    local p = CreateFrame("Frame", nil, self.mainFrame)
-    p:SetSize(596, 365)
-    p:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 12, -63)
+-- Tab 2: Queue Panel
+function GUI:CreateQueuePanel(parent)
+    local p = CreateFrame("Frame", nil, parent)
+    p:SetSize(488, 416)
+    p:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -36)
     p:Hide()
     self.queuePanel = p
 
-    -- Queue Action Bar
+    -- Action Bar
     local startBtn = CreateFrame("Button", nil, p)
-    startBtn:SetSize(110, 26)
+    startBtn:SetSize(100, 26)
     startBtn:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
-    startBtn:SetBackdrop(backdropStyle)
-    startBtn:SetBackdropColor(0.1, 0.6, 0.3, 1.0)
-    startBtn:SetBackdropBorderColor(0.2, 0.8, 0.4, 1.0)
+    startBtn:SetBackdrop(backdropObsidian)
+    startBtn:SetBackdropColor(0.0, 0.6, 0.3, 1.0)
+    startBtn:SetBackdropBorderColor(0.1, 0.8, 0.4, 1.0)
 
-    local stFont = startBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local stFont = startBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightBold")
     stFont:SetPoint("CENTER", startBtn, "CENTER", 0, 0)
-    stFont:SetText("Start / Resume")
+    stFont:SetText("Start Queue")
     startBtn:SetScript("OnClick", function() GInviter.QueueManager:StartQueue() end)
 
     local pauseBtn = CreateFrame("Button", nil, p)
-    pauseBtn:SetSize(90, 26)
-    pauseBtn:SetPoint("LEFT", startBtn, "RIGHT", 10, 0)
-    pauseBtn:SetBackdrop(backdropStyle)
+    pauseBtn:SetSize(80, 26)
+    pauseBtn:SetPoint("LEFT", startBtn, "RIGHT", 8, 0)
+    pauseBtn:SetBackdrop(backdropObsidian)
     pauseBtn:SetBackdropColor(0.8, 0.5, 0.1, 1.0)
     pauseBtn:SetBackdropBorderColor(0.9, 0.6, 0.2, 1.0)
 
@@ -302,33 +434,34 @@ function GUI:CreateQueuePanel()
     pauseBtn:SetScript("OnClick", function() GInviter.QueueManager:PauseQueue() end)
 
     local clearBtn = CreateFrame("Button", nil, p)
-    clearBtn:SetSize(90, 26)
-    clearBtn:SetPoint("LEFT", pauseBtn, "RIGHT", 10, 0)
-    clearBtn:SetBackdrop(backdropStyle)
+    clearBtn:SetSize(80, 26)
+    clearBtn:SetPoint("LEFT", pauseBtn, "RIGHT", 8, 0)
+    clearBtn:SetBackdrop(backdropObsidian)
     clearBtn:SetBackdropColor(0.7, 0.2, 0.2, 1.0)
     clearBtn:SetBackdropBorderColor(0.8, 0.3, 0.3, 1.0)
 
     local cFont = clearBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     cFont:SetPoint("CENTER", clearBtn, "CENTER", 0, 0)
-    cFont:SetText("Clear Queue")
+    cFont:SetText("Clear")
     clearBtn:SetScript("OnClick", function() GInviter.QueueManager:ClearQueue() end)
 
     -- Auto Whisper Checkbox
-    local whisperCheck = CreateFrame("CheckButton", "GInviterAutoWhisperCheck", p, "UICheckButtonTemplate")
-    whisperCheck:SetPoint("LEFT", clearBtn, "RIGHT", 20, 0)
+    local whisperCheck = CreateFrame("CheckButton", "GInviterVPAutoWhisper", p, "UICheckButtonTemplate")
+    whisperCheck:SetPoint("LEFT", clearBtn, "RIGHT", 14, 0)
     _G[whisperCheck:GetName() .. "Text"]:SetText("Auto-Whisper")
+    _G[whisperCheck:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     whisperCheck:SetChecked(GInviter.Database:GetSettings().autoWhisper)
     whisperCheck:SetScript("OnClick", function(s)
         GInviter.Database:GetSettings().autoWhisper = s:GetChecked()
     end)
 
     -- Queue List ScrollFrame
-    local scrollFrame = CreateFrame("ScrollFrame", "GInviterQueueScroll", p, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetSize(565, 320)
-    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -38)
+    local scrollFrame = CreateFrame("ScrollFrame", "GInviterVPQueueScroll", p, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetSize(465, 375)
+    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -36)
 
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(565, 320)
+    content:SetSize(465, 375)
     scrollFrame:SetScrollChild(content)
     self.queueContent = content
     self.queueRows = {}
@@ -339,28 +472,27 @@ function GUI:OnQueueUpdated(queue)
     if not self.queueContent then return end
 
     for _, row in ipairs(self.queueRows) do row:Hide() end
-
-    self.queueContent:SetHeight(math.max(#queue * 26, 320))
+    self.queueContent:SetHeight(math.max(#queue * 26, 375))
 
     for i, p in ipairs(queue) do
         local row = self.queueRows[i]
         if not row then
             row = CreateFrame("Frame", nil, self.queueContent)
-            row:SetSize(565, 24)
-            row:SetBackdrop(backdropStyle)
+            row:SetSize(465, 24)
+            row:SetBackdrop(backdropObsidian)
 
             local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             nameText:SetPoint("LEFT", row, "LEFT", 8, 0)
             row.nameText = nameText
 
-            local statusText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            statusText:SetPoint("LEFT", row, "LEFT", 220, 0)
+            local statusText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            statusText:SetPoint("LEFT", row, "LEFT", 200, 0)
             row.statusText = statusText
 
             local removeBtn = CreateFrame("Button", nil, row)
             removeBtn:SetSize(60, 20)
             removeBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-            removeBtn:SetBackdrop(backdropStyle)
+            removeBtn:SetBackdrop(backdropObsidian)
             removeBtn:SetBackdropColor(0.6, 0.2, 0.2, 1.0)
             removeBtn:SetBackdropBorderColor(0.7, 0.3, 0.3, 1.0)
 
@@ -373,104 +505,32 @@ function GUI:OnQueueUpdated(queue)
         end
 
         row:SetPoint("TOPLEFT", self.queueContent, "TOPLEFT", 0, -(i - 1) * 26)
-        row:SetBackdropColor(i % 2 == 0 and 0.1 or 0.14, i % 2 == 0 and 0.11 or 0.16, i % 2 == 0 and 0.15 or 0.2, 0.8)
-        row:SetBackdropBorderColor(0.2, 0.22, 0.28, 0.5)
+        row:SetBackdropColor(i % 2 == 0 and 0.06 or 0.09, i % 2 == 0 and 0.07 or 0.1, i % 2 == 0 and 0.09 or 0.13, 0.9)
+        row:SetBackdropBorderColor(0.12, 0.14, 0.18, 0.5)
 
-        row.nameText:SetText(p.name .. " (Lv" .. (p.level or 0) .. " " .. (p.class or "") .. ")")
-        row.statusText:SetText(p.status or "QUEUED")
-        row.removeBtn:SetScript("OnClick", function()
-            GInviter.QueueManager:RemoveFromQueue(i)
-        end)
+        row.nameText:SetText(p.name .. " (Lv" .. (p.level or 0) .. ")")
+        row.statusText:SetText("|cff00a2ff" .. (p.status or "QUEUED") .. "|r")
+        row.removeBtn:SetScript("OnClick", function() GInviter.QueueManager:RemoveFromQueue(i) end)
 
         row:Show()
     end
 end
 
--- Tab 3: Filters Panel
-function GUI:CreateFiltersPanel()
-    local p = CreateFrame("Frame", nil, self.mainFrame)
-    p:SetSize(596, 365)
-    p:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 12, -63)
-    p:Hide()
-    self.filtersPanel = p
-
-    local filters = GInviter.Database:GetSettings().filters or GInviter.Config.Defaults.filters
-
-    -- Filter Checkboxes
-    local cbNoGuild = CreateFrame("CheckButton", "GInviterFilterNoGuild", p, "UICheckButtonTemplate")
-    cbNoGuild:SetPoint("TOPLEFT", p, "TOPLEFT", 10, -10)
-    _G[cbNoGuild:GetName() .. "Text"]:SetText("No Guild Only")
-    cbNoGuild:SetChecked(filters.noGuildOnly)
-    cbNoGuild:SetScript("OnClick", function(s) filters.noGuildOnly = s:GetChecked() end)
-
-    local cbFriends = CreateFrame("CheckButton", "GInviterFilterFriends", p, "UICheckButtonTemplate")
-    cbFriends:SetPoint("TOPLEFT", cbNoGuild, "BOTTOMLEFT", 0, -5)
-    _G[cbFriends:GetName() .. "Text"]:SetText("Exclude Friends")
-    cbFriends:SetChecked(filters.excludeFriends)
-    cbFriends:SetScript("OnClick", function(s) filters.excludeFriends = s:GetChecked() end)
-
-    local cbIgnores = CreateFrame("CheckButton", "GInviterFilterIgnores", p, "UICheckButtonTemplate")
-    cbIgnores:SetPoint("TOPLEFT", cbFriends, "BOTTOMLEFT", 0, -5)
-    _G[cbIgnores:GetName() .. "Text"]:SetText("Exclude Ignore List")
-    cbIgnores:SetChecked(filters.excludeIgnores)
-    cbIgnores:SetScript("OnClick", function(s) filters.excludeIgnores = s:GetChecked() end)
-
-    local cbRecentInv = CreateFrame("CheckButton", "GInviterFilterRecentInv", p, "UICheckButtonTemplate")
-    cbRecentInv:SetPoint("TOPLEFT", cbIgnores, "BOTTOMLEFT", 0, -5)
-    _G[cbRecentInv:GetName() .. "Text"]:SetText("Exclude Recent Invites")
-    cbRecentInv:SetChecked(filters.excludeRecentInvites)
-    cbRecentInv:SetScript("OnClick", function(s) filters.excludeRecentInvites = s:GetChecked() end)
-
-    local cbBlacklist = CreateFrame("CheckButton", "GInviterFilterBlacklist", p, "UICheckButtonTemplate")
-    cbBlacklist:SetPoint("TOPLEFT", cbRecentInv, "BOTTOMLEFT", 0, -5)
-    _G[cbBlacklist:GetName() .. "Text"]:SetText("Exclude Blacklisted Players")
-    cbBlacklist:SetChecked(filters.excludeBlacklisted)
-    cbBlacklist:SetScript("OnClick", function(s) filters.excludeBlacklisted = s:GetChecked() end)
-
-    -- Duplicate Protection Window Selector Text
-    local dupLabel = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    dupLabel:SetPoint("TOPLEFT", p, "TOPLEFT", 300, -15)
-    dupLabel:SetText("Duplicate Protection Window:")
-
-    local dupOptionBtn = CreateFrame("Button", nil, p)
-    dupOptionBtn:SetSize(140, 24)
-    dupOptionBtn:SetPoint("TOPLEFT", dupLabel, "BOTTOMLEFT", 0, -8)
-    dupOptionBtn:SetBackdrop(backdropStyle)
-    dupOptionBtn:SetBackdropColor(0.15, 0.18, 0.24, 1.0)
-    dupOptionBtn:SetBackdropBorderColor(0.3, 0.35, 0.45, 1.0)
-
-    local dupText = dupOptionBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    dupText:SetPoint("CENTER", dupOptionBtn, "CENTER", 0, 0)
-    dupText:SetText(GInviter.Database:GetSettings().dupWindow or "today")
-
-    dupOptionBtn:SetScript("OnClick", function()
-        local cur = GInviter.Database:GetSettings().dupWindow
-        local nextVal = "10m"
-        if cur == "10m" then nextVal = "1h"
-        elseif cur == "1h" then nextVal = "today"
-        elseif cur == "today" then nextVal = "custom"
-        else nextVal = "10m" end
-        GInviter.Database:GetSettings().dupWindow = nextVal
-        dupText:SetText(nextVal)
-    end)
-end
-
--- Tab 4: Stats & History Panel
-function GUI:CreateStatsPanel()
-    local p = CreateFrame("Frame", nil, self.mainFrame)
-    p:SetSize(596, 365)
-    p:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 12, -63)
+-- Tab 3: Stats Panel
+function GUI:CreateStatsPanel(parent)
+    local p = CreateFrame("Frame", nil, parent)
+    p:SetSize(488, 416)
+    p:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -36)
     p:Hide()
     self.statsPanel = p
 
-    -- Stats Summary Header
     local statsHeader = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    statsHeader:SetPoint("TOPLEFT", p, "TOPLEFT", 10, -10)
-    statsHeader:SetText("Today's Recruitment Statistics")
+    statsHeader:SetPoint("TOPLEFT", p, "TOPLEFT", 8, -10)
+    statsHeader:SetText("|cff00a2ffToday's Recruitment Overview|r")
 
     local statsText = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    statsText:SetPoint("TOPLEFT", statsHeader, "BOTTOMLEFT", 0, -8)
-    statsText:SetText("Invited: 0  |  Accepted: 0  |  Declined: 0  |  Guilded: 0  |  Ignored: 0")
+    statsText:SetPoint("TOPLEFT", statsHeader, "BOTTOMLEFT", 0, -10)
+    statsText:SetText("Invited: 0  |  Accepted: 0  |  Declined: 0  |  Guilded: 0")
     self.statsText = statsText
 end
 
@@ -478,44 +538,84 @@ function GUI:RefreshStatsDisplay()
     if not self.statsText then return end
     local st = GInviter.Database:GetStats()
     self.statsText:SetText("Invited: |cffffffff" .. (st.invited or 0) ..
-        "|r  |  Accepted: |cff33ff33" .. (st.accepted or 0) ..
-        "|r  |  Declined: |cffff3333" .. (st.declined or 0) ..
-        "|r  |  Guilded: |cffffcc00" .. (st.alreadyGuilded or 0) ..
-        "|r  |  Ignored: |cff888888" .. (st.ignored or 0) .. "|r")
+        "|r   Accepted: |cff00e676" .. (st.accepted or 0) ..
+        "|r   Declined: |cffff3355" .. (st.declined or 0) ..
+        "|r   Guilded: |cffffcc00" .. (st.alreadyGuilded or 0) .. "|r")
 end
 
--- Fallback Mode Secure Action Button HUD
+-- Dual-View Fallback Mode HUD Component (Integrated Footer + Floating Pill)
 function GUI:CreateFallbackHUD()
-    local hud = CreateFrame("Button", "GInviterFallbackButton", UIParent, "SecureActionButtonTemplate")
-    hud:SetSize(220, 44)
-    hud:SetPoint("TOP", UIParent, "TOP", 0, -120)
-    hud:SetFrameStrata("FULLSCREEN_DIALOG")
-    hud:SetBackdrop(backdropStyle)
-    hud:SetBackdropColor(0.8, 0.2, 0.1, 0.95)
-    hud:SetBackdropBorderColor(1.0, 0.4, 0.2, 1.0)
-    hud:Hide()
+    -- 1. Integrated Footer Action Dock
+    local dock = CreateFrame("Button", "GInviterFooterDockButton", self.mainFrame, "SecureActionButtonTemplate")
+    dock:SetSize(684, 32)
+    dock:SetPoint("BOTTOMLEFT", self.mainFrame, "BOTTOMLEFT", 8, 8)
+    dock:SetBackdrop(backdropObsidian)
+    dock:SetBackdropColor(0.8, 0.2, 0.1, 0.95)
+    dock:SetBackdropBorderColor(1.0, 0.4, 0.2, 1.0)
+    dock:Hide()
 
-    local title = hud:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    title:SetPoint("TOP", hud, "TOP", 0, -6)
-    title:SetText("[ Fallback Mode - Click to Invite ]")
+    local dockText = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    dockText:SetPoint("CENTER", dock, "CENTER", 0, 0)
+    dockText:SetText("[ Fallback Mode - Click to Invite: None ]")
+    dock.dockText = dockText
+    self.footerDock = dock
 
-    local targetText = hud:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    targetText:SetPoint("BOTTOM", hud, "BOTTOM", 0, 6)
-    targetText:SetText("Next Target: None")
-    hud.targetText = targetText
+    -- 2. Independent Floating HUD Pill
+    local pill = CreateFrame("Button", "GInviterFloatingPillButton", UIParent, "SecureActionButtonTemplate")
+    pill:SetSize(240, 40)
+    pill:SetPoint("TOP", UIParent, "TOP", 0, -100)
+    pill:SetFrameStrata("FULLSCREEN_DIALOG")
+    pill:SetBackdrop(backdropObsidian)
+    pill:SetBackdropColor(0.8, 0.2, 0.1, 0.95)
+    pill:SetBackdropBorderColor(1.0, 0.4, 0.2, 1.0)
+    pill:EnableMouse(true)
+    pill:RegisterForDrag("LeftButton")
+    pill:SetScript("OnDragStart", function(s) s:StartMoving() end)
+    pill:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
+    pill:SetMovable(true)
+    pill:Hide()
 
-    self.fallbackHUD = hud
+    local pillText = pill:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pillText:SetPoint("CENTER", pill, "CENTER", 0, 0)
+    pillText:SetText("[ Next Invite: None ]")
+    pill.pillText = pillText
+    self.floatingPill = pill
 end
 
 function GUI:SetFallbackTarget(targetName)
-    if not self.fallbackHUD then return end
+    self.currentTarget = targetName
     if targetName then
-        self.fallbackHUD:SetAttribute("type", "macro")
-        self.fallbackHUD:SetAttribute("macrotext", "/ginvite " .. targetName)
-        self.fallbackHUD.targetText:SetText("Next Target: |cffffffff" .. targetName .. "|r")
-        self.fallbackHUD:Show()
+        if self.footerDock then
+            self.footerDock:SetAttribute("type", "macro")
+            self.footerDock:SetAttribute("macrotext", "/ginvite " .. targetName)
+            self.footerDock.dockText:SetText("|cffffffff[ FALLBACK MODE - CLICK TO INVITE: |cff00e676" .. targetName .. "|r ]|r")
+            self.footerDock:Show()
+        end
+
+        if self.floatingPill then
+            self.floatingPill:SetAttribute("type", "macro")
+            self.floatingPill:SetAttribute("macrotext", "/ginvite " .. targetName)
+            self.floatingPill.pillText:SetText("|cffffffff[ NEXT INVITE: |cff00e676" .. targetName .. "|r ]|r")
+        end
+
+        self:UpdateFloatingHUDState()
     else
-        self.fallbackHUD:Hide()
+        if self.footerDock then self.footerDock:Hide() end
+        if self.floatingPill then self.floatingPill:Hide() end
+    end
+end
+
+function GUI:UpdateFloatingHUDState()
+    if not self.currentTarget then
+        if self.floatingPill then self.floatingPill:Hide() end
+        return
+    end
+
+    -- If main dashboard is hidden/minimized, show floating HUD pill
+    if self.mainFrame and not self.mainFrame:IsShown() then
+        if self.floatingPill then self.floatingPill:Show() end
+    else
+        if self.floatingPill then self.floatingPill:Hide() end
     end
 end
 
@@ -526,5 +626,6 @@ function GUI:Toggle()
         else
             self.mainFrame:Show()
         end
+        self:UpdateFloatingHUDState()
     end
 end
