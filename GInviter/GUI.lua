@@ -416,7 +416,7 @@ function GUI:CreateQueuePanel(parent)
     startBtn:SetBackdropColor(0.0, 0.6, 0.3, 1.0)
     startBtn:SetBackdropBorderColor(0.1, 0.8, 0.4, 1.0)
 
-    local stFont = startBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightBold")
+    local stFont = startBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     stFont:SetPoint("CENTER", startBtn, "CENTER", 0, 0)
     stFont:SetText("Start Queue")
     startBtn:SetScript("OnClick", function() GInviter.QueueManager:StartQueue() end)
