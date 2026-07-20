@@ -1,0 +1,17 @@
+## Interface: 30300
+## Title: |cff3399ffGInviter|r
+## Notes: Premium, Layered Guild Recruitment Addon for World of Warcraft 3.3.5a.
+## Author: Zendevve
+## Version: 1.0.0
+## SavedVariables: GInviterDB
+
+Config.lua
+Database.lua
+FilterEngine.lua
+WhoScanner.lua
+WhisperHandler.lua
+QueueManager.lua
+SyncManager.lua
+MinimapButton.lua
+GUI.lua
+Core.lua
