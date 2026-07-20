@@ -1,4 +1,4 @@
--- GInviter GUI.lua - Top/Bottom Split View Redesign
+-- GInviter GUI.lua - Maximum UX Feedback & Indicators Engine
 local addonName, addon = ...
 GInviter = GInviter or {}
 GInviter.GUI = {}
@@ -6,6 +6,8 @@ local GUI = GInviter.GUI
 
 GUI.scannedPlayers = {}
 GUI.queueList = {}
+GUI.isScanning = false
+GUI.queueState = "IDLE" -- IDLE, RUNNING, PAUSED, COMPLETED
 
 -- Standard WoW 3.3.5 Class Colors (RGB Hex)
 local CLASS_COLORS = {
@@ -77,6 +79,7 @@ function GUI:Initialize()
     local closeBtn = CreateFrame("Button", nil, titleBar, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -4, -4)
     closeBtn:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOff")
         f:Hide()
         GUI:UpdateFloatingHUDState()
     end)
@@ -84,7 +87,7 @@ function GUI:Initialize()
     -- Top Filter & Action Bar
     self:CreateFilterBar(f)
 
-    -- Top Pane: Candidate Pool Table (Height: 240px)
+    -- Top Pane: Candidate Pool Table (Height: 235px)
     self:CreateCandidatePane(f)
 
     -- Bottom Pane: Active Queue & Whisper Deck (Height: 185px)
@@ -92,6 +95,49 @@ function GUI:Initialize()
 
     -- Fallback Mode Action Dock & Floating Pill
     self:CreateFallbackHUD()
+
+    -- Toast Notification Frame
+    self:CreateToastSystem()
+end
+
+-- On-Screen Toast Notification System
+function GUI:CreateToastSystem()
+    local toast = CreateFrame("Frame", "GInviterToastFrame", UIParent)
+    toast:SetSize(320, 32)
+    toast:SetPoint("TOP", UIParent, "TOP", 0, -50)
+    toast:SetFrameStrata("TOOLTIP")
+    toast:SetBackdrop(backdropObsidian)
+    toast:SetBackdropColor(0.08, 0.09, 0.12, 0.95)
+    toast:SetBackdropBorderColor(0.0, 0.64, 1.0, 1.0)
+    toast:Hide()
+
+    local text = toast:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    text:SetPoint("CENTER", toast, "CENTER", 0, 0)
+    toast.text = text
+    self.toastFrame = toast
+end
+
+function GUI:ShowToast(message, colorType)
+    if not self.toastFrame then return end
+    colorType = colorType or "BLUE"
+
+    local borderColor = {0.0, 0.64, 1.0, 1.0}
+    if colorType == "GREEN" then borderColor = {0.0, 0.9, 0.4, 1.0}
+    elseif colorType == "AMBER" then borderColor = {1.0, 0.7, 0.0, 1.0}
+    elseif colorType == "RED" then borderColor = {1.0, 0.2, 0.3, 1.0} end
+
+    self.toastFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
+    self.toastFrame.text:SetText(message)
+    self.toastFrame:Show()
+
+    local elapsed = 0
+    self.toastFrame:SetScript("OnUpdate", function(f, el)
+        elapsed = elapsed + el
+        if elapsed >= 2.5 then
+            f:SetScript("OnUpdate", nil)
+            f:Hide()
+        end
+    end)
 end
 
 -- Top Filter & Action Toolbar
@@ -105,7 +151,7 @@ function GUI:CreateFilterBar(parent)
 
     -- Run Scan Button
     local scanBtn = CreateFrame("Button", nil, bar)
-    scanBtn:SetSize(120, 24)
+    scanBtn:SetSize(130, 24)
     scanBtn:SetPoint("LEFT", bar, "LEFT", 8, 0)
     scanBtn:SetBackdrop(backdropObsidian)
     scanBtn:SetBackdropColor(0.1, 0.4, 0.8, 1.0)
@@ -114,7 +160,17 @@ function GUI:CreateFilterBar(parent)
     local sFont = scanBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     sFont:SetPoint("CENTER", scanBtn, "CENTER", 0, 0)
     sFont:SetText("Run /who Scan")
-    scanBtn:SetScript("OnClick", function() GInviter.WhoScanner:StartAutoScan() end)
+    scanBtn.sFont = sFont
+    self.scanBtn = scanBtn
+
+    scanBtn:SetScript("OnClick", function()
+        PlaySound("igPlayerOptionCheckBoxOn")
+        if GInviter.WhoScanner.isScanning then
+            GInviter.WhoScanner:StopAutoScan()
+        else
+            GInviter.WhoScanner:StartAutoScan()
+        end
+    end)
 
     -- Filters
     local filters = GInviter.Database:GetSettings().filters or GInviter.Config.Defaults.filters
@@ -124,28 +180,40 @@ function GUI:CreateFilterBar(parent)
     _G[cbNoGuild:GetName() .. "Text"]:SetText("No Guild")
     _G[cbNoGuild:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbNoGuild:SetChecked(filters.noGuildOnly)
-    cbNoGuild:SetScript("OnClick", function(s) filters.noGuildOnly = s:GetChecked() end)
+    cbNoGuild:SetScript("OnClick", function(s)
+        PlaySound("igPlayerOptionCheckBoxOn")
+        filters.noGuildOnly = s:GetChecked()
+    end)
 
     local cbFriends = CreateFrame("CheckButton", "GInviterFBarFriends", bar, "UICheckButtonTemplate")
     cbFriends:SetPoint("LEFT", cbNoGuild, "RIGHT", 55, 0)
     _G[cbFriends:GetName() .. "Text"]:SetText("No Friends")
     _G[cbFriends:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbFriends:SetChecked(filters.excludeFriends)
-    cbFriends:SetScript("OnClick", function(s) filters.excludeFriends = s:GetChecked() end)
+    cbFriends:SetScript("OnClick", function(s)
+        PlaySound("igPlayerOptionCheckBoxOn")
+        filters.excludeFriends = s:GetChecked()
+    end)
 
     local cbIgnores = CreateFrame("CheckButton", "GInviterFBarIgnores", bar, "UICheckButtonTemplate")
     cbIgnores:SetPoint("LEFT", cbFriends, "RIGHT", 65, 0)
     _G[cbIgnores:GetName() .. "Text"]:SetText("No Ignores")
     _G[cbIgnores:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbIgnores:SetChecked(filters.excludeIgnores)
-    cbIgnores:SetScript("OnClick", function(s) filters.excludeIgnores = s:GetChecked() end)
+    cbIgnores:SetScript("OnClick", function(s)
+        PlaySound("igPlayerOptionCheckBoxOn")
+        filters.excludeIgnores = s:GetChecked()
+    end)
 
     local cbRecent = CreateFrame("CheckButton", "GInviterFBarRecent", bar, "UICheckButtonTemplate")
     cbRecent:SetPoint("LEFT", cbIgnores, "RIGHT", 65, 0)
     _G[cbRecent:GetName() .. "Text"]:SetText("No Recent")
     _G[cbRecent:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbRecent:SetChecked(filters.excludeRecentInvites)
-    cbRecent:SetScript("OnClick", function(s) filters.excludeRecentInvites = s:GetChecked() end)
+    cbRecent:SetScript("OnClick", function(s)
+        PlaySound("igPlayerOptionCheckBoxOn")
+        filters.excludeRecentInvites = s:GetChecked()
+    end)
 
     -- Recruit Everyone Primary CTA Button
     local recruitAllBtn = CreateFrame("Button", nil, bar)
@@ -162,10 +230,27 @@ function GUI:CreateFilterBar(parent)
     self.recruitAllBtn = recruitAllBtn
 
     recruitAllBtn:SetScript("OnClick", function()
+        PlaySound("igPlayerOptionCheckBoxOn")
         local count = GInviter.QueueManager:QueueBatch(GUI.scannedPlayers)
-        DEFAULT_CHAT_FRAME:AddMessage("|cff00a2ff[GInviter]|r Queued " .. count .. " eligible players.")
+        GUI:ShowToast("Queued " .. count .. " players", "GREEN")
         GInviter.QueueManager:StartQueue()
     end)
+end
+
+-- Live Scan Status Callback
+function GUI:OnScanStatusUpdated(statusText, isScanning)
+    self.isScanning = isScanning
+    if self.scanBtn and self.scanBtn.sFont then
+        if isScanning then
+            self.scanBtn.sFont:SetText("|cff00e676" .. statusText .. "|r")
+            self.scanBtn:SetBackdropColor(0.0, 0.5, 0.9, 1.0)
+            self.scanBtn:SetBackdropBorderColor(0.0, 0.9, 0.4, 1.0)
+        else
+            self.scanBtn.sFont:SetText("Run /who Scan")
+            self.scanBtn:SetBackdropColor(0.1, 0.4, 0.8, 1.0)
+            self.scanBtn:SetBackdropBorderColor(0.2, 0.5, 0.9, 1.0)
+        end
+    end
 end
 
 -- Top Pane: Candidate Pool Table (Height: 235px)
@@ -202,7 +287,7 @@ function GUI:CreateCandidatePane(parent)
     th4:SetPoint("LEFT", header, "LEFT", 565, 0)
     th4:SetText("|cff8f8f8fACTION|r")
 
-    -- Scroll Frame with 35px right margin clearance for scrollbar
+    -- Scroll Frame with 35px right margin clearance
     local scrollFrame = CreateFrame("ScrollFrame", "GInviterCandidateScroll", p, "UIPanelScrollFrameTemplate")
     scrollFrame:SetSize(675, 210)
     scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -22)
@@ -230,7 +315,7 @@ function GUI:OnWhoScanCompleted(results, summary)
         local row = self.candidateRows[i]
         if not row then
             row = CreateFrame("Frame", nil, self.candidateContent)
-            row:SetSize(645, 24) -- 645px row width (30px clear gap before frame right edge)
+            row:SetSize(645, 24)
             row:SetBackdrop(backdropObsidian)
 
             local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -247,7 +332,7 @@ function GUI:OnWhoScanCompleted(results, summary)
 
             local actBtn = CreateFrame("Button", nil, row)
             actBtn:SetSize(85, 20)
-            actBtn:SetPoint("LEFT", row, "LEFT", 555, 0) -- Fixed X position, zero overlap
+            actBtn:SetPoint("LEFT", row, "LEFT", 555, 0)
             actBtn:SetBackdrop(backdropObsidian)
 
             local actFont = actBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -266,7 +351,6 @@ function GUI:OnWhoScanCompleted(results, summary)
         row.nameText:SetText(colorStr .. p.name .. "|r")
         row.classText:SetText("Lv" .. p.level .. " " .. p.class)
 
-        -- Strict Status Truncation (Max 38 characters to prevent bleed)
         local rawStatus = p.isEligible and "Eligible" or (p.reason or "Ineligible")
         local truncatedStatus = TruncateString(rawStatus, 38)
 
@@ -276,6 +360,7 @@ function GUI:OnWhoScanCompleted(results, summary)
             row.actBtn:SetBackdropBorderColor(0.1, 0.7, 0.35, 1.0)
             row.actBtn.actFont:SetText("[ + Queue ]")
             row.actBtn:SetScript("OnClick", function()
+                PlaySound("igPlayerOptionCheckBoxOn")
                 GInviter.QueueManager:AddToQueue(p)
                 GInviter.QueueManager:StartQueue()
             end)
@@ -287,7 +372,6 @@ function GUI:OnWhoScanCompleted(results, summary)
             row.actBtn:SetScript("OnClick", nil)
         end
 
-        -- Full Tooltip
         row:SetScript("OnEnter", function(s)
             GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
             GameTooltip:AddLine(p.name .. " (Lv" .. p.level .. " " .. p.class .. ")", 1, 1, 1)
@@ -302,7 +386,7 @@ function GUI:OnWhoScanCompleted(results, summary)
     end
 end
 
--- Bottom Pane: Active Queue & Whisper Deck (Height: 185px)
+-- Bottom Pane: Active Queue & Progress Deck (Height: 185px)
 function GUI:CreateQueuePane(parent)
     local p = CreateFrame("Frame", nil, parent)
     p:SetSize(704, 185)
@@ -312,21 +396,29 @@ function GUI:CreateQueuePane(parent)
     p:SetBackdropBorderColor(0.15, 0.16, 0.22, 1.0)
     self.queuePane = p
 
-    -- Queue Action Bar
+    -- Queue Action Bar & Progress Dock
     local bar = CreateFrame("Frame", nil, p)
-    bar:SetSize(704, 26)
+    bar:SetSize(704, 30)
     bar:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
     bar:SetBackdrop(backdropObsidian)
     bar:SetBackdropColor(0.1, 0.12, 0.16, 1.0)
     bar:SetBackdropBorderColor(0.18, 0.2, 0.26, 1.0)
 
+    -- Live Progress Bar Texture Fill
+    local progressBar = CreateFrame("Frame", nil, bar)
+    progressBar:SetSize(1, 28)
+    progressBar:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
+    progressBar:SetBackdrop(backdropObsidian)
+    progressBar:SetBackdropColor(0.0, 0.5, 0.9, 0.25)
+    self.qProgressBar = progressBar
+
     local qTitle = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     qTitle:SetPoint("LEFT", bar, "LEFT", 10, 0)
-    qTitle:SetText("|cff00a2ffACTIVE RECRUITMENT QUEUE|r")
+    qTitle:SetText("|cff00a2ffACTIVE QUEUE|r (|cffffffff0 Pending|r)")
     self.qTitle = qTitle
 
     local startBtn = CreateFrame("Button", nil, bar)
-    startBtn:SetSize(90, 20)
+    startBtn:SetSize(100, 22)
     startBtn:SetPoint("LEFT", bar, "LEFT", 220, 0)
     startBtn:SetBackdrop(backdropObsidian)
     startBtn:SetBackdropColor(0.0, 0.6, 0.3, 1.0)
@@ -335,10 +427,18 @@ function GUI:CreateQueuePane(parent)
     local stFont = startBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     stFont:SetPoint("CENTER", startBtn, "CENTER", 0, 0)
     stFont:SetText("Start Queue")
-    startBtn:SetScript("OnClick", function() GInviter.QueueManager:StartQueue() end)
+    startBtn.stFont = stFont
+    self.startBtn = startBtn
+    startBtn:SetScript("OnClick", function()
+        if GInviter.QueueManager.isRunning then
+            GInviter.QueueManager:PauseQueue()
+        else
+            GInviter.QueueManager:StartQueue()
+        end
+    end)
 
     local pauseBtn = CreateFrame("Button", nil, bar)
-    pauseBtn:SetSize(70, 20)
+    pauseBtn:SetSize(70, 22)
     pauseBtn:SetPoint("LEFT", startBtn, "RIGHT", 6, 0)
     pauseBtn:SetBackdrop(backdropObsidian)
     pauseBtn:SetBackdropColor(0.8, 0.5, 0.1, 1.0)
@@ -347,10 +447,12 @@ function GUI:CreateQueuePane(parent)
     local pFont = pauseBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     pFont:SetPoint("CENTER", pauseBtn, "CENTER", 0, 0)
     pFont:SetText("Pause")
+    pauseBtn.pFont = pFont
+    self.pauseBtn = pauseBtn
     pauseBtn:SetScript("OnClick", function() GInviter.QueueManager:PauseQueue() end)
 
     local clearBtn = CreateFrame("Button", nil, bar)
-    clearBtn:SetSize(70, 20)
+    clearBtn:SetSize(70, 22)
     clearBtn:SetPoint("LEFT", pauseBtn, "RIGHT", 6, 0)
     clearBtn:SetBackdrop(backdropObsidian)
     clearBtn:SetBackdropColor(0.7, 0.2, 0.2, 1.0)
@@ -368,19 +470,64 @@ function GUI:CreateQueuePane(parent)
     _G[whisperCheck:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     whisperCheck:SetChecked(GInviter.Database:GetSettings().autoWhisper)
     whisperCheck:SetScript("OnClick", function(s)
+        PlaySound("igPlayerOptionCheckBoxOn")
         GInviter.Database:GetSettings().autoWhisper = s:GetChecked()
     end)
 
     -- Scroll Area with 35px right clearance
     local scrollFrame = CreateFrame("ScrollFrame", "GInviterQueueScroll", p, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetSize(675, 155)
-    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -26)
+    scrollFrame:SetSize(675, 150)
+    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -30)
 
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(660, 155)
+    content:SetSize(660, 150)
     scrollFrame:SetScrollChild(content)
     self.queueContent = content
     self.queueRows = {}
+end
+
+-- Live Queue State Callback
+function GUI:OnQueueStateChanged(state, activeTarget, completed, total)
+    self.queueState = state
+    total = total or #self.queueList
+    completed = completed or 0
+
+    local pct = (total > 0) and math.min(1.0, completed / total) or 0
+    if self.qProgressBar then
+        self.qProgressBar:SetWidth(math.max(1, math.floor(702 * pct)))
+    end
+
+    if self.qTitle then
+        if state == "RUNNING" then
+            self.qTitle:SetText("|cff00e676ACTIVE QUEUE - RUNNING (" .. completed .. "/" .. total .. ")|r")
+        elseif state == "PAUSED" then
+            self.qTitle:SetText("|cffffcc00ACTIVE QUEUE - PAUSED (" .. completed .. "/" .. total .. ")|r")
+        else
+            self.qTitle:SetText("|cff00a2ffACTIVE QUEUE|r (|cffffffff" .. total .. " Pending|r)")
+        end
+    end
+
+    if self.startBtn and self.startBtn.stFont then
+        if state == "RUNNING" then
+            self.startBtn.stFont:SetText("[ RUNNING ]")
+            self.startBtn:SetBackdropColor(0.0, 0.8, 0.4, 1.0)
+            self.startBtn:SetBackdropBorderColor(0.2, 1.0, 0.5, 1.0)
+        elseif state == "PAUSED" then
+            self.startBtn.stFont:SetText("[ RESUME ]")
+            self.startBtn:SetBackdropColor(0.9, 0.6, 0.1, 1.0)
+            self.startBtn:SetBackdropBorderColor(1.0, 0.7, 0.2, 1.0)
+        else
+            self.startBtn.stFont:SetText("Start Queue")
+            self.startBtn:SetBackdropColor(0.0, 0.6, 0.3, 1.0)
+            self.startBtn:SetBackdropBorderColor(0.1, 0.8, 0.4, 1.0)
+        end
+    end
+end
+
+function GUI:OnWhisperTicker(targetName, secondsRemaining)
+    if self.qTitle then
+        self.qTitle:SetText("|cff00a2ffWHISPERING: " .. targetName .. " (" .. secondsRemaining .. "s)|r")
+    end
 end
 
 function GUI:OnQueueUpdated(queue)
@@ -391,7 +538,7 @@ function GUI:OnQueueUpdated(queue)
     if not self.queueContent then return end
 
     for _, row in ipairs(self.queueRows) do row:Hide() end
-    self.queueContent:SetHeight(math.max(#queue * 26, 155))
+    self.queueContent:SetHeight(math.max(#queue * 26, 150))
 
     for i, p in ipairs(queue) do
         local row = self.queueRows[i]
@@ -429,7 +576,10 @@ function GUI:OnQueueUpdated(queue)
 
         row.nameText:SetText(p.name .. " (Lv" .. (p.level or 0) .. ")")
         row.statusText:SetText("|cff00a2ff" .. (p.status or "QUEUED") .. "|r")
-        row.removeBtn:SetScript("OnClick", function() GInviter.QueueManager:RemoveFromQueue(i) end)
+        row.removeBtn:SetScript("OnClick", function()
+            PlaySound("igPlayerOptionCheckBoxOn")
+            GInviter.QueueManager:RemoveFromQueue(i)
+        end)
 
         row:Show()
     end

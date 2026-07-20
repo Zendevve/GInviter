@@ -32,9 +32,17 @@ function WH:SendRecruitmentWhisper(targetName, onAffirmative, onNegative, onTime
 
     -- Create timeout handler frame
     local elapsed = 0
+    local lastSec = -1
     local timerFrame = CreateFrame("Frame")
     timerFrame:SetScript("OnUpdate", function(f, el)
         elapsed = elapsed + el
+        local remSec = math.max(0, math.floor(timeout - elapsed))
+        if remSec ~= lastSec then
+            lastSec = remSec
+            if GInviter.GUI and GInviter.GUI.OnWhisperTicker then
+                GInviter.GUI:OnWhisperTicker(targetName, remSec)
+            end
+        end
         if elapsed >= timeout then
             f:SetScript("OnUpdate", nil)
             WH:OnWhisperTimeout(targetName)

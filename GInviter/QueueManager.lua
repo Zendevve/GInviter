@@ -98,6 +98,11 @@ function QM:StartQueue()
     if #self.queue == 0 then return end
     self.isRunning = true
     self.currentIndex = 1
+    PlaySound("igPlayerOptionCheckBoxOn")
+    if GInviter.GUI then
+        if GInviter.GUI.ShowToast then GInviter.GUI:ShowToast("Queue Started", "GREEN") end
+        if GInviter.GUI.OnQueueStateChanged then GInviter.GUI:OnQueueStateChanged("RUNNING", nil, 0, #self.queue) end
+    end
     self:ProcessNextQueueItem()
 end
 
@@ -106,11 +111,21 @@ function QM:PauseQueue()
     if self.timerFrame then
         self.timerFrame:SetScript("OnUpdate", nil)
     end
+    PlaySound("igPlayerOptionCheckBoxOff")
+    if GInviter.GUI then
+        if GInviter.GUI.ShowToast then GInviter.GUI:ShowToast("Queue Paused", "AMBER") end
+        if GInviter.GUI.OnQueueStateChanged then GInviter.GUI:OnQueueStateChanged("PAUSED", nil, self.currentIndex, #self.queue) end
+    end
 end
 
 function QM:ResumeQueue()
     if #self.queue == 0 then return end
     self.isRunning = true
+    PlaySound("igPlayerOptionCheckBoxOn")
+    if GInviter.GUI then
+        if GInviter.GUI.ShowToast then GInviter.GUI:ShowToast("Queue Resumed", "GREEN") end
+        if GInviter.GUI.OnQueueStateChanged then GInviter.GUI:OnQueueStateChanged("RUNNING", nil, self.currentIndex, #self.queue) end
+    end
     self:ProcessNextQueueItem()
 end
 
@@ -238,6 +253,10 @@ function QM:OnSystemMessage(msg)
         GInviter.Database:UpdateInviteResult(joinedPlayer, "ACCEPTED")
         GInviter.Database:IncrementStat("accepted")
         self:UpdateQueueStatusByName(joinedPlayer, "ACCEPTED")
+        PlaySound("QUESTCOMPLETED")
+        if GInviter.GUI and GInviter.GUI.ShowToast then
+            GInviter.GUI:ShowToast("+ " .. joinedPlayer .. " joined the guild!", "GREEN")
+        end
         return
     end
 
@@ -247,6 +266,10 @@ function QM:OnSystemMessage(msg)
         GInviter.Database:UpdateInviteResult(declinedPlayer, "DECLINED")
         GInviter.Database:IncrementStat("declined")
         self:UpdateQueueStatusByName(declinedPlayer, "DECLINED")
+        PlaySound("igQuestFailed")
+        if GInviter.GUI and GInviter.GUI.ShowToast then
+            GInviter.GUI:ShowToast(declinedPlayer .. " declined invite", "RED")
+        end
         return
     end
 

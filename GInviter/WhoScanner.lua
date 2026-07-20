@@ -41,11 +41,17 @@ end
 function WS:StartAutoScan()
     self.isScanning = true
     self.currentLevelSlice = 1
+    if GInviter.GUI and GInviter.GUI.OnScanStatusUpdated then
+        GInviter.GUI:OnScanStatusUpdated("Scanning Brackets...", true)
+    end
     self:ExecuteSliceQuery()
 end
 
 function WS:StopAutoScan()
     self.isScanning = false
+    if GInviter.GUI and GInviter.GUI.OnScanStatusUpdated then
+        GInviter.GUI:OnScanStatusUpdated("Scan Idle", false)
+    end
 end
 
 function WS:ExecuteSliceQuery()
@@ -57,7 +63,12 @@ function WS:ExecuteSliceQuery()
         bracket = levelBrackets[1]
     end
 
-    local query = bracket[1] .. "-" .. bracket[2]
+    local bracketStr = bracket[1] .. "-" .. bracket[2]
+    if GInviter.GUI and GInviter.GUI.OnScanStatusUpdated then
+        GInviter.GUI:OnScanStatusUpdated("Scanning " .. bracketStr .. "...", true)
+    end
+
+    local query = bracketStr
     self:SendQuery(query)
 end
 
@@ -123,6 +134,10 @@ function WS:OnWhoListUpdate()
         end
 
         local delay = GInviter.Database:GetSettings().whoScanDelay or 5
+        if GInviter.GUI and GInviter.GUI.OnScanStatusUpdated then
+            GInviter.GUI:OnScanStatusUpdated("Scan Cooldown (" .. delay .. "s)", true)
+        end
+
         if type(C_Timer) == "table" and type(C_Timer.After) == "function" then
             C_Timer.After(delay, function()
                 if WS.isScanning then
