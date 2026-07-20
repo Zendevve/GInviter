@@ -49,6 +49,41 @@ function QM:AddToQueue(player)
     return true, "Queued"
 end
 
+function QM:IsQueued(playerName)
+    if not playerName then return false end
+    local nameLower = string.lower(playerName)
+    for i, p in ipairs(self.queue) do
+        if string.lower(p.name) == nameLower then
+            return true, p.status, i
+        end
+    end
+    return false, nil, nil
+end
+
+function QM:MoveQueueItem(index, direction)
+    if not index or index < 1 or index > #self.queue then return end
+    local targetIdx = index + direction
+    if targetIdx < 1 or targetIdx > #self.queue then return end
+
+    local temp = self.queue[index]
+    self.queue[index] = self.queue[targetIdx]
+    self.queue[targetIdx] = temp
+
+    if GInviter.GUI and GInviter.GUI.OnQueueUpdated then
+        GInviter.GUI:OnQueueUpdated(self.queue)
+    end
+end
+
+function QM:InviteNow(index)
+    if not index or not self.queue[index] then return end
+    local entry = table.remove(self.queue, index)
+    table.insert(self.queue, 1, entry)
+    self.currentIndex = 1
+    entry.status = "QUEUED"
+    self.isRunning = true
+    self:ProcessNextQueueItem()
+end
+
 function QM:QueueBatch(playerList)
     local count = 0
     for _, p in ipairs(playerList) do
