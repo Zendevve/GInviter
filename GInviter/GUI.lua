@@ -158,6 +158,7 @@ function GUI:CreateFilterBar(parent)
     local rFont = recruitAllBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     rFont:SetPoint("CENTER", recruitAllBtn, "CENTER", 0, 0)
     rFont:SetText("[ Recruit Everyone ]")
+    recruitAllBtn.rFont = rFont
     self.recruitAllBtn = recruitAllBtn
 
     recruitAllBtn:SetScript("OnClick", function()
@@ -215,9 +216,9 @@ end
 
 function GUI:OnWhoScanCompleted(results, summary)
     self.scannedPlayers = results or {}
-    if self.recruitAllBtn then
-        local font = self.recruitAllBtn:GetFontString()
-        font:SetText("[ Recruit Everyone (" .. (summary.eligible or 0) .. ") ]")
+    if self.recruitAllBtn and self.recruitAllBtn.rFont then
+        local eligibleCount = (summary and summary.eligible) or 0
+        self.recruitAllBtn.rFont:SetText("[ Recruit Everyone (" .. eligibleCount .. ") ]")
     end
 
     for _, row in ipairs(self.candidateRows) do row:Hide() end
