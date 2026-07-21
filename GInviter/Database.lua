@@ -94,6 +94,19 @@ function DB:GetInviteHistory(playerName)
     return GInviterDB.history[string.lower(playerName)]
 end
 
+function DB:GetAllHistory()
+    local list = {}
+    if GInviterDB and GInviterDB.history then
+        for _, entry in pairs(GInviterDB.history) do
+            table.insert(list, entry)
+        end
+        table.sort(list, function(a, b)
+            return (a.timestamp or 0) > (b.timestamp or 0)
+        end)
+    end
+    return list
+end
+
 -- Duplicate Protection Evaluator
 function DB:IsRecentInvite(playerName)
     local record = self:GetInviteHistory(playerName)
