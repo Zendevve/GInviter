@@ -48,6 +48,21 @@ local backdropBase = {
     insets = { left = 0, right = 0, top = 0, bottom = 0 }
 }
 
+-- Modal Overlay Scrim (blocks background interaction during dialogs)
+local function CreateModalScrim(modal)
+    local scrim = CreateFrame("Frame", nil, UIParent)
+    scrim:SetAllPoints(UIParent)
+    scrim:SetFrameStrata("DIALOG")
+    scrim:SetFrameLevel(modal:GetFrameLevel() - 1)
+    scrim:EnableMouse(true)
+    scrim:SetBackdrop(backdropBase)
+    scrim:SetBackdropColor(0, 0, 0, 0.5)
+    scrim:SetBackdropBorderColor(0, 0, 0, 0)
+    scrim:Hide()
+    modal:SetScript("OnShow", function() scrim:Show() end)
+    modal:SetScript("OnHide", function() scrim:Hide() end)
+end
+
 function GUI:Initialize()
     if self.mainFrame then return end
 
@@ -61,6 +76,7 @@ function GUI:Initialize()
     f:SetBackdropColor(0.03, 0.03, 0.05, 0.98) -- Base Tier #08080d
     f:SetBackdropBorderColor(0.10, 0.11, 0.15, 1.0)
     f:Hide()
+    tinsert(UISpecialFrames, "GInviterMainFrame")
 
     self.mainFrame = f
 
@@ -95,7 +111,7 @@ function GUI:Initialize()
     settingsBtn:SetBackdropBorderColor(0.20, 0.40, 0.80, 1.0)
     local sIcon = settingsBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     sIcon:SetPoint("CENTER", settingsBtn, "CENTER", 0, 0)
-    sIcon:SetText("|cff00a2ff[*]|r")
+    sIcon:SetText("|TInterface\\Icons\\INV_Misc_Gear_01:14|t")
     settingsBtn:SetScript("OnClick", function()
         PlaySound("igPlayerOptionCheckBoxOn")
         GUI:ToggleSettingsDialog()
@@ -116,7 +132,7 @@ function GUI:Initialize()
     historyBtn:SetBackdropBorderColor(0.20, 0.40, 0.80, 1.0)
     local hIcon = historyBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hIcon:SetPoint("CENTER", historyBtn, "CENTER", 0, 0)
-    hIcon:SetText("|cff00e676[H]|r")
+    hIcon:SetText("|TInterface\\Icons\\INV_Misc_Note_02:14|t")
     historyBtn:SetScript("OnClick", function()
         PlaySound("igPlayerOptionCheckBoxOn")
         GUI:ToggleHistoryDialog()
@@ -137,6 +153,14 @@ function GUI:Initialize()
 
     -- Top Pane: Candidate Pool Table (Height: 220px)
     self:CreateCandidatePane(f)
+
+    -- Section Divider (Candidate → Queue visual separator)
+    local divider = CreateFrame("Frame", nil, f)
+    divider:SetSize(704, 2)
+    divider:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -325)
+    divider:SetBackdrop(backdropBase)
+    divider:SetBackdropColor(0.0, 0.64, 1.0, 0.3)
+    divider:SetBackdropBorderColor(0, 0, 0, 0)
 
     -- Bottom Pane: Active Queue & Whisper Deck (Height: 180px)
     self:CreateQueuePane(f)
@@ -184,12 +208,22 @@ function GUI:ShowToast(message, colorType)
     self.toastFrame.text:SetText("|TInterface\\Icons\\ACHIEVEMENT_GuildPERK_EveryoneIn:16|t  " .. message)
     self.toastFrame:Show()
 
+    -- F6-5: Toast queue — auto-dismiss after 3s with fade
+    if self.toastTimer then
+        self.toastFrame:SetScript("OnUpdate", nil)
+    end
     local elapsed = 0
+    self.toastTimer = true
     self.toastFrame:SetScript("OnUpdate", function(f, el)
         elapsed = elapsed + el
-        if elapsed >= 3.0 then
+        if elapsed >= 2.5 and elapsed < 3.0 then
+            local alpha = 1.0 - ((elapsed - 2.5) / 0.5)
+            f:SetAlpha(math.max(0, alpha))
+        elseif elapsed >= 3.0 then
             f:SetScript("OnUpdate", nil)
             f:Hide()
+            f:SetAlpha(1.0)
+            self.toastTimer = nil
         end
     end)
 end
@@ -248,7 +282,7 @@ function GUI:CreateFilterBar(parent)
     cbNoGuild:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local cbFriends = CreateFrame("CheckButton", "GInviterFBarFriends", bar, "UICheckButtonTemplate")
-    cbFriends:SetPoint("LEFT", cbNoGuild, "RIGHT", 50, 0)
+    cbFriends:SetPoint("LEFT", cbNoGuild, "RIGHT", 20, 0)
     _G[cbFriends:GetName() .. "Text"]:SetText("No Friends")
     _G[cbFriends:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbFriends:SetChecked(filters.excludeFriends)
@@ -266,7 +300,7 @@ function GUI:CreateFilterBar(parent)
     cbFriends:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local cbIgnores = CreateFrame("CheckButton", "GInviterFBarIgnores", bar, "UICheckButtonTemplate")
-    cbIgnores:SetPoint("LEFT", cbFriends, "RIGHT", 50, 0)
+    cbIgnores:SetPoint("LEFT", cbFriends, "RIGHT", 20, 0)
     _G[cbIgnores:GetName() .. "Text"]:SetText("No Ignores")
     _G[cbIgnores:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbIgnores:SetChecked(filters.excludeIgnores)
@@ -284,7 +318,7 @@ function GUI:CreateFilterBar(parent)
     cbIgnores:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local cbRecent = CreateFrame("CheckButton", "GInviterFBarRecent", bar, "UICheckButtonTemplate")
-    cbRecent:SetPoint("LEFT", cbIgnores, "RIGHT", 50, 0)
+    cbRecent:SetPoint("LEFT", cbIgnores, "RIGHT", 20, 0)
     _G[cbRecent:GetName() .. "Text"]:SetText("No Recent")
     _G[cbRecent:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbRecent:SetChecked(filters.excludeRecentInvites)
@@ -311,7 +345,7 @@ function GUI:CreateFilterBar(parent)
 
     local rFont = recruitAllBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     rFont:SetPoint("CENTER", recruitAllBtn, "CENTER", 0, 0)
-    rFont:SetText("|TInterface\\Icons\\Achievement_GuildPERK_EveryoneIn:16|t |cffffffffRecruit All|r")
+    rFont:SetText("|TInterface\\Icons\\Achievement_GuildPERK_EveryoneIn:16|t |cffffffffQueue All Eligible|r")
     recruitAllBtn.rFont = rFont
     self.recruitAllBtn = recruitAllBtn
 
@@ -387,6 +421,25 @@ function GUI:OnScanStatusUpdated(statusText, isScanning)
             self.scanBtn:SetBackdropBorderColor(0.20, 0.40, 0.80, 1.0)
         end
     end
+    -- F6-4: Update candidate pane empty state during active scan
+    if self.emptyFrame and #(self.filteredPlayers or {}) == 0 then
+        if isScanning then
+            self.emptyFrame:Show()
+            if self.emptyFrame.title then
+                self.emptyFrame.title:SetText("|cff00a2ff" .. statusText .. "|r")
+            end
+            if self.emptyFrame.sub then
+                self.emptyFrame.sub:SetText("Scanning for unguilded players...")
+            end
+        else
+            if self.emptyFrame.title then
+                self.emptyFrame.title:SetText("|cff00a2ffNo Candidates Loaded|r")
+            end
+            if self.emptyFrame.sub then
+                self.emptyFrame.sub:SetText("Click Run /who Scan to search for unguilded players.")
+            end
+        end
+    end
 end
 
 -- Top Pane: Candidate Pool Table (Height: 220px)
@@ -407,17 +460,17 @@ function GUI:CreateCandidatePane(parent)
     header:SetBackdropColor(0.08, 0.10, 0.14, 1.0)
     header:SetBackdropBorderColor(0.18, 0.2, 0.26, 1.0)
 
-    local th1 = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local th1 = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     th1:SetPoint("LEFT", header, "LEFT", 10, 0)
-    th1:SetText("|cff8f8f8fPLAYER|r")
+    th1:SetText("PLAYER")
 
-    local th2 = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local th2 = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     th2:SetPoint("LEFT", header, "LEFT", 135, 0)
-    th2:SetText("|cff8f8f8fCLASS / LV|r")
+    th2:SetText("CLASS / LV")
 
-    local th3 = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local th3 = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     th3:SetPoint("LEFT", header, "LEFT", 250, 0)
-    th3:SetText("|cff8f8f8fSTATUS & REASON|r")
+    th3:SetText("STATUS")
 
     -- Search EditBox (180x22px)
     local searchBox = CreateFrame("EditBox", "GInviterSearchEditBox", header, "InputBoxTemplate")
@@ -497,7 +550,7 @@ function GUI:ApplyCandidateFilter(summary)
     end
 
     if self.recruitAllBtn and self.recruitAllBtn.rFont then
-        self.recruitAllBtn.rFont:SetText("|TInterface\\Icons\\Achievement_GuildPERK_EveryoneIn:16|t |cffffffffRecruit All (" .. eligibleCount .. ")|r")
+        self.recruitAllBtn.rFont:SetText("|TInterface\\Icons\\Achievement_GuildPERK_EveryoneIn:16|t |cffffffffQueue All (" .. eligibleCount .. ")|r")
     end
 
     self:RefreshCandidateRows()
@@ -583,28 +636,26 @@ function GUI:RefreshCandidateRows()
         local isQueued, qStatus = GInviter.QueueManager:IsQueued(p.name)
 
         if isQueued then
-            row.statusText:SetText("|cff00e676[ QUEUED - " .. (qStatus or "QUEUED") .. " ]|r")
+            row.statusText:SetText("|cff00e676QUEUED - " .. (qStatus or "QUEUED") .. "|r")
             row.actBtn:SetBackdropColor(0.0, 0.4, 0.2, 0.8)
             row.actBtn:SetBackdropBorderColor(0.0, 0.7, 0.3, 0.8)
-            row.actBtn.actFont:SetText("|cff00e676[ QUEUED ]|r")
+            row.actBtn.actFont:SetText("|cff00e676QUEUED|r")
             row.actBtn:SetScript("OnClick", nil)
         elseif p.isEligible then
-            local rawStatus = "Eligible"
-            local truncatedStatus = TruncateString(rawStatus, 38)
-            row.statusText:SetText("|cff00e676[ " .. truncatedStatus .. " ]|r")
+            row.statusText:SetText("|cff00e676Eligible|r")
             row.actBtn:SetBackdropColor(0.0, 0.5, 0.25, 1.0)
             row.actBtn:SetBackdropBorderColor(0.1, 0.7, 0.35, 1.0)
-            row.actBtn.actFont:SetText("[ + Queue ]")
+            row.actBtn.actFont:SetText("+ Queue")
             row.actBtn:SetScript("OnClick", function()
                 PlaySound("igPlayerOptionCheckBoxOn")
                 GInviter.QueueManager:AddToQueue(p)
-                GInviter.QueueManager:StartQueue()
+                GUI:ShowToast(p.name .. " added to queue", "BLUE")
                 GUI:RefreshCandidateRows()
             end)
         else
             local rawStatus = p.reason or "Ineligible"
             local truncatedStatus = TruncateString(rawStatus, 38)
-            row.statusText:SetText("|cffff3355[" .. truncatedStatus .. "]|r")
+            row.statusText:SetText("|cffff3355" .. truncatedStatus .. "|r")
             row.actBtn:SetBackdropColor(0.15, 0.15, 0.18, 0.8)
             row.actBtn:SetBackdropBorderColor(0.2, 0.2, 0.25, 0.8)
             row.actBtn.actFont:SetText("Skip")
@@ -641,7 +692,7 @@ function GUI:CreateQueuePane(parent)
     progressBar:SetBackdropColor(0.0, 0.5, 0.9, 0.25)
     self.qProgressBar = progressBar
 
-    local qTitle = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local qTitle = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     qTitle:SetPoint("LEFT", bar, "LEFT", 10, 0)
     qTitle:SetText("|cff00a2ffACTIVE QUEUE|r (|cffffffff0 Pending|r)")
     self.qTitle = qTitle
@@ -690,7 +741,10 @@ function GUI:CreateQueuePane(parent)
     local cFont = clearBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     cFont:SetPoint("CENTER", clearBtn, "CENTER", 0, 0)
     cFont:SetText("Clear")
-    clearBtn:SetScript("OnClick", function() GInviter.QueueManager:ClearQueue() end)
+    clearBtn:SetScript("OnClick", function()
+        GInviter.QueueManager:ClearQueue()
+        GUI:ShowToast("Queue cleared", "AMBER")
+    end)
 
     -- Auto Whisper Checkbox
     local whisperCheck = CreateFrame("CheckButton", "GInviterQAutoWhisper", bar, "UICheckButtonTemplate")
@@ -761,11 +815,11 @@ function GUI:OnQueueStateChanged(state, activeTarget, completed, total)
 
     if self.startBtn and self.startBtn.stFont then
         if state == "RUNNING" then
-            self.startBtn.stFont:SetText("[ RUNNING ]")
+            self.startBtn.stFont:SetText("|cff00e676RUNNING|r")
             self.startBtn:SetBackdropColor(0.0, 0.8, 0.4, 1.0)
             self.startBtn:SetBackdropBorderColor(0.2, 1.0, 0.5, 1.0)
         elseif state == "PAUSED" then
-            self.startBtn.stFont:SetText("[ RESUME ]")
+            self.startBtn.stFont:SetText("|cffffcc00RESUME|r")
             self.startBtn:SetBackdropColor(0.9, 0.6, 0.1, 1.0)
             self.startBtn:SetBackdropBorderColor(1.0, 0.7, 0.2, 1.0)
         else
@@ -774,6 +828,7 @@ function GUI:OnQueueStateChanged(state, activeTarget, completed, total)
             self.startBtn:SetBackdropBorderColor(0.1, 0.8, 0.4, 1.0)
         end
     end
+    self:RefreshCandidateRows()
 end
 
 function GUI:OnQueueFinished()
@@ -820,9 +875,9 @@ function GUI:OnQueueUpdated(queue)
             upBtn:SetBackdrop(backdropBase)
             upBtn:SetBackdropColor(0.15, 0.18, 0.24, 1.0)
             upBtn:SetBackdropBorderColor(0.3, 0.35, 0.45, 1.0)
-            local uFont = upBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            local uFont = upBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             uFont:SetPoint("CENTER", upBtn, "CENTER", 0, 0)
-            uFont:SetText("^")
+            uFont:SetText("|cffffffffU|r")
             row.upBtn = upBtn
 
             local dnBtn = CreateFrame("Button", nil, row)
@@ -831,9 +886,9 @@ function GUI:OnQueueUpdated(queue)
             dnBtn:SetBackdrop(backdropBase)
             dnBtn:SetBackdropColor(0.15, 0.18, 0.24, 1.0)
             dnBtn:SetBackdropBorderColor(0.3, 0.35, 0.45, 1.0)
-            local dFont = dnBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            local dFont = dnBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             dFont:SetPoint("CENTER", dnBtn, "CENTER", 0, 0)
-            dFont:SetText("v")
+            dFont:SetText("|cffffffffD|r")
             row.dnBtn = dnBtn
 
             local nowBtn = CreateFrame("Button", nil, row)
@@ -915,10 +970,11 @@ function GUI:CreateBatchConfirmDialog()
     d:SetBackdropColor(0.07, 0.08, 0.11, 0.98)
     d:SetBackdropBorderColor(1.0, 0.84, 0.0, 1.0)
     d:Hide()
+    tinsert(UISpecialFrames, "GInviterBatchConfirmDialog")
 
     local title = d:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", d, "TOP", 0, -16)
-    title:SetText("|cffffd700Confirm Batch Recruitment|r")
+    title:SetText("|cffffd700Confirm Batch Queue|r")
 
     local text = d:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("TOP", title, "BOTTOM", 0, -12)
@@ -937,7 +993,7 @@ function GUI:CreateBatchConfirmDialog()
     confirmBtn:SetBackdropBorderColor(0.1, 0.8, 0.4, 1.0)
     local cFont = confirmBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     cFont:SetPoint("CENTER", confirmBtn, "CENTER", 0, 0)
-    cFont:SetText("[ Confirm Queue ]")
+    cFont:SetText("Confirm Queue")
 
     confirmBtn:SetScript("OnClick", function()
         PlaySound("igPlayerOptionCheckBoxOn")
@@ -963,6 +1019,7 @@ function GUI:CreateBatchConfirmDialog()
         d:Hide()
     end)
 
+    CreateModalScrim(d)
     self.batchConfirmDialog = d
 end
 
@@ -983,6 +1040,7 @@ function GUI:CreateSettingsDialog()
     d:SetBackdropColor(0.07, 0.08, 0.11, 0.98)
     d:SetBackdropBorderColor(0.0, 0.64, 1.0, 1.0)
     d:Hide()
+    tinsert(UISpecialFrames, "GInviterSettingsDialog")
 
     local title = d:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", d, "TOPLEFT", 16, -14)
@@ -993,9 +1051,14 @@ function GUI:CreateSettingsDialog()
 
     local settings = GInviter.Database:GetSettings()
 
+    -- Section: Timing
+    local secTiming = d:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    secTiming:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -44)
+    secTiming:SetText("|cffffcc00Timing|r")
+
     -- 1. Invite Interval Input
     local l1 = d:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    l1:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -50)
+    l1:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -64)
     l1:SetText("Invite Interval (seconds):")
 
     local ebInterval = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
@@ -1006,7 +1069,7 @@ function GUI:CreateSettingsDialog()
 
     -- 2. Scan Delay Input
     local l2 = d:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    l2:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -85)
+    l2:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -96)
     l2:SetText("Who Scan Delay (seconds):")
 
     local ebScanDelay = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
@@ -1015,9 +1078,14 @@ function GUI:CreateSettingsDialog()
     ebScanDelay:SetNumber(settings.whoScanDelay or 5)
     ebScanDelay:SetAutoFocus(false)
 
+    -- Section: Whisper Behavior
+    local secWhisper = d:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    secWhisper:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -128)
+    secWhisper:SetText("|cffffcc00Whisper Behavior|r")
+
     -- 3. Whisper Timeout Input
     local l3 = d:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    l3:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -120)
+    l3:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -148)
     l3:SetText("Whisper Timeout (seconds):")
 
     local ebWhisperTimeout = CreateFrame("EditBox", nil, d, "InputBoxTemplate")
@@ -1028,7 +1096,7 @@ function GUI:CreateSettingsDialog()
 
     -- 4. Timeout Action Checkbox
     local cbTimeoutAction = CreateFrame("CheckButton", "GInviterSetTimeoutAction", d, "UICheckButtonTemplate")
-    cbTimeoutAction:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -155)
+    cbTimeoutAction:SetPoint("TOPLEFT", d, "TOPLEFT", 20, -180)
     _G[cbTimeoutAction:GetName() .. "Text"]:SetText("Direct Invite on Whisper Timeout")
     _G[cbTimeoutAction:GetName() .. "Text"]:SetFontObject("GameFontHighlightSmall")
     cbTimeoutAction:SetChecked(settings.whisperTimeoutAction == "invite")
@@ -1054,6 +1122,7 @@ function GUI:CreateSettingsDialog()
         d:Hide()
     end)
 
+    CreateModalScrim(d)
     self.settingsDialog = d
 end
 
@@ -1073,6 +1142,7 @@ function GUI:CreateHistoryDialog()
     d:SetBackdropColor(0.07, 0.08, 0.11, 0.98)
     d:SetBackdropBorderColor(0.0, 0.64, 1.0, 1.0)
     d:Hide()
+    tinsert(UISpecialFrames, "GInviterHistoryDialog")
 
     local title = d:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", d, "TOPLEFT", 16, -14)
@@ -1095,6 +1165,7 @@ function GUI:CreateHistoryDialog()
     d.historyContent = content
     d.historyRows = {}
 
+    CreateModalScrim(d)
     self.historyDialog = d
 end
 
@@ -1170,6 +1241,7 @@ function GUI:CreateTemplateDialog()
     d:SetBackdropColor(0.07, 0.08, 0.11, 0.98)
     d:SetBackdropBorderColor(0.0, 0.64, 1.0, 1.0)
     d:Hide()
+    tinsert(UISpecialFrames, "GInviterTemplateDialog")
 
     local title = d:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", d, "TOPLEFT", 14, -12)
@@ -1223,6 +1295,7 @@ function GUI:CreateTemplateDialog()
         d:Hide()
     end)
 
+    CreateModalScrim(d)
     self.templateDialog = d
 end
 
